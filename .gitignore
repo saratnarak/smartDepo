@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.next/
+out/
+*.tsbuildinfo
+
+# Test output
+coverage/
+junit.xml
+test-results/
+playwright-report/
+
+# Prisma generated client
+apps/api/src/generated/
+
+# Environment files (never commit real secrets)
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS and editor
+.DS_Store
+.idea/
+.vscode/

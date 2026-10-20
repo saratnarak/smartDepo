@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: smartdepo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-smartdepo}
+      POSTGRES_USER: ${POSTGRES_USER:-smartdepo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-in-local-env}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - smartdepo-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-smartdepo} -d ${POSTGRES_DB:-smartdepo}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  smartdepo-db-data:

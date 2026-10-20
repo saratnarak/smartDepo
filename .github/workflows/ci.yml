@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+  DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+  MIGRATION_DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+  # Dummy values: unit tests never hit a real database or issue real production tokens.
+  JWT_ACCESS_SECRET: ci-access-secret-not-for-production
+  JWT_REFRESH_SECRET: ci-refresh-secret-not-for-production
+  JWT_ACCESS_TTL: 15m
+  JWT_REFRESH_TTL: 7d
+
+jobs:
+  quality:
+    name: Lint, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Validate Prisma schema
+        run: pnpm --filter api exec prisma validate
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build

@@ -1,0 +1,601 @@
+// SmartDepo database schema (Phase 1 draft).
+//
+// Rules that this schema must keep (AGENTS.md section 6):
+// - Every depot-owned table carries a non-null depot_id, indexed for tenant scoping.
+// - Money uses NUMERIC(14,2); quantities use NUMERIC(18,3) and are stored in the product base unit.
+// - Stock is derived from stock_movements only; no stock quantity column exists.
+// - Customer balances are derived from invoices and payments; no balance column exists.
+// - A payment may be split across invoices through payment_allocations.
+// - Audit logs are append-only (no update/delete columns beyond created_at).
+//
+// Migrations are intentionally not created in this task.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum DepotStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum Locale {
+  EN
+  KM
+}
+
+// One role per user. OWNER is a superset of SALES and STOCK_KEEPER:
+// permission checks must treat OWNER as allowed for every SALES and STOCK_KEEPER action,
+// so a small depot never needs multi-role assignments.
+enum RoleCode {
+  PLATFORM_ADMIN
+  OWNER
+  SALES
+  STOCK_KEEPER
+  DELIVERY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum PriceType {
+  RETAIL
+  WHOLESALE
+}
+
+enum StockMovementType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  RETURN
+  DAMAGE
+}
+
+enum CustomerType {
+  RETAILER
+  RESTAURANT
+  OTHER
+}
+
+enum SalesOrderStatus {
+  DRAFT
+  COMPLETED
+  VOIDED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  RECEIVED
+  CANCELLED
+}
+
+/// Platform-level subscription plan. Simulated billing only (FR-4).
+model Plan {
+  id           String  @id @default(uuid()) @db.Uuid
+  code         String  @unique
+  name         String
+  priceMonthly Decimal @default(0) @map("price_monthly") @db.Decimal(14, 2)
+  maxUsers     Int?    @map("max_users")
+  maxProducts  Int?    @map("max_products")
+  isActive     Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+/// A depot (tenant). Not depot-owned itself: this is the tenant root.
+model Depot {
+  id                 String      @id @default(uuid()) @db.Uuid
+  name               String
+  slug               String      @unique
+  phone              String
+  email              String      @unique
+  address            String?
+  logoUrl            String?     @map("logo_url")
+  currency           String      @default("KHR") @db.VarChar(3)
+  locale             Locale      @default(EN)
+  invoiceFooter      String?     @map("invoice_footer")
+  status             DepotStatus @default(PENDING)
+  rejectionReason    String?     @map("rejection_reason")
+  allowNegativeStock Boolean     @default(false) @map("allow_negative_stock")
+  approvedAt         DateTime?   @map("approved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  subscriptions      Subscription[]
+  users              User[]
+  categories         Category[]
+  products           Product[]
+  productUnits       ProductUnit[]
+  prices             Price[]
+  batches            Batch[]
+  stockMovements     StockMovement[]
+  customers          Customer[]
+  salesOrders        SalesOrder[]
+  saleItems          SaleItem[]
+  payments           Payment[]
+  paymentAllocations PaymentAllocation[]
+  suppliers          Supplier[]
+  purchaseOrders     PurchaseOrder[]
+  purchaseItems      PurchaseItem[]
+  auditLogs          AuditLog[]
+
+  @@index([status])
+  @@map("depots")
+}
+
+model Subscription {
+  id        String             @id @default(uuid()) @db.Uuid
+  depotId   String             @map("depot_id") @db.Uuid
+  planId    String             @map("plan_id") @db.Uuid
+  status    SubscriptionStatus @default(ACTIVE)
+  startedAt DateTime           @default(now()) @map("started_at")
+  endsAt    DateTime?          @map("ends_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot Depot @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  plan  Plan  @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([depotId])
+  @@index([depotId, status])
+  @@index([planId])
+  @@map("subscriptions")
+}
+
+/// Role lookup table. Users hold exactly one role (users.role_id).
+/// OWNER includes all SALES and STOCK_KEEPER permissions; guards should expand this hierarchy
+/// instead of assigning several roles to one user.
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        RoleCode @unique
+  name        String
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  users User[]
+
+  @@map("roles")
+}
+
+/// Users belong to one depot, except PLATFORM_ADMIN users who have no depot.
+model User {
+  id                  String    @id @default(uuid()) @db.Uuid
+  depotId             String?   @map("depot_id") @db.Uuid
+  roleId              String    @map("role_id") @db.Uuid
+  name                String
+  email               String    @unique
+  phone               String?   @unique
+  passwordHash        String    @map("password_hash")
+  isActive            Boolean   @default(true) @map("is_active")
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until")
+  lastLoginAt         DateTime? @map("last_login_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot          Depot?          @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  role           Role            @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  stockMovements StockMovement[]
+  salesOrders    SalesOrder[]    @relation("SalesOrderCreatedBy")
+  payments       Payment[]       @relation("PaymentReceivedBy")
+  purchaseOrders PurchaseOrder[] @relation("PurchaseOrderCreatedBy")
+  auditLogs      AuditLog[]      @relation("AuditLogActor")
+
+  @@index([depotId])
+  @@index([roleId])
+  @@map("users")
+}
+
+model Category {
+  id       String  @id @default(uuid()) @db.Uuid
+  depotId  String  @map("depot_id") @db.Uuid
+  name     String
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot    Depot     @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  products Product[]
+
+  @@unique([depotId, name])
+  @@index([depotId])
+  @@map("categories")
+}
+
+model Product {
+  id           String  @id @default(uuid()) @db.Uuid
+  depotId      String  @map("depot_id") @db.Uuid
+  categoryId   String? @map("category_id") @db.Uuid
+  sku          String
+  name         String
+  description  String?
+  reorderLevel Decimal @default(0) @map("reorder_level") @db.Decimal(18, 3)
+  trackBatches Boolean @default(false) @map("track_batches")
+  isActive     Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot          Depot           @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  category       Category?       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  productUnits   ProductUnit[]
+  batches        Batch[]
+  stockMovements StockMovement[]
+  saleItems      SaleItem[]
+  purchaseItems  PurchaseItem[]
+
+  @@unique([depotId, sku])
+  @@index([depotId])
+  @@index([depotId, categoryId])
+  @@index([depotId, name])
+  @@map("products")
+}
+
+/// Units per product (bottle, carton, crate, kg, sack).
+/// Exactly one row per product is the base unit (conversion_factor = 1); enforced in the service.
+model ProductUnit {
+  id               String  @id @default(uuid()) @db.Uuid
+  depotId          String  @map("depot_id") @db.Uuid
+  productId        String  @map("product_id") @db.Uuid
+  name             String
+  conversionFactor Decimal @map("conversion_factor") @db.Decimal(18, 6)
+  isBaseUnit       Boolean @default(false) @map("is_base_unit")
+  isActive         Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot         Depot          @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  prices        Price[]
+  saleItems     SaleItem[]
+  purchaseItems PurchaseItem[]
+
+  @@unique([productId, name])
+  @@index([depotId])
+  @@index([depotId, productId])
+  @@map("product_units")
+}
+
+/// Retail/wholesale price per product unit. Special customer-group prices are added in Phase 3 (FR-14).
+model Price {
+  id            String    @id @default(uuid()) @db.Uuid
+  depotId       String    @map("depot_id") @db.Uuid
+  productUnitId String    @map("product_unit_id") @db.Uuid
+  type          PriceType @default(RETAIL)
+  amount        Decimal   @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot       Depot       @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  productUnit ProductUnit @relation(fields: [productUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([productUnitId, type])
+  @@index([depotId])
+  @@index([depotId, productUnitId])
+  @@map("prices")
+}
+
+model Batch {
+  id          String    @id @default(uuid()) @db.Uuid
+  depotId     String    @map("depot_id") @db.Uuid
+  productId   String    @map("product_id") @db.Uuid
+  batchNumber String    @map("batch_number")
+  expiryDate  DateTime? @map("expiry_date") @db.Date
+  receivedAt  DateTime? @map("received_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot          Depot           @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  product        Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  stockMovements StockMovement[]
+
+  @@unique([productId, batchNumber])
+  @@index([depotId])
+  @@index([depotId, productId, expiryDate])
+  @@map("batches")
+}
+
+/// Append-only stock ledger. Quantity is signed and expressed in the product base unit.
+model StockMovement {
+  id              String            @id @default(uuid()) @db.Uuid
+  depotId         String            @map("depot_id") @db.Uuid
+  productId       String            @map("product_id") @db.Uuid
+  batchId         String?           @map("batch_id") @db.Uuid
+  type            StockMovementType
+  quantity        Decimal           @db.Decimal(18, 3)
+  unitCost        Decimal?          @map("unit_cost") @db.Decimal(14, 2)
+  reason          String?
+  saleOrderId     String?           @map("sale_order_id") @db.Uuid
+  purchaseOrderId String?           @map("purchase_order_id") @db.Uuid
+  createdById     String?           @map("created_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  depot         Depot          @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  product       Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  batch         Batch?         @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  saleOrder     SalesOrder?    @relation(fields: [saleOrderId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: Restrict)
+  createdBy     User?          @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([depotId])
+  @@index([depotId, productId, createdAt])
+  @@index([depotId, batchId])
+  @@index([saleOrderId])
+  @@index([purchaseOrderId])
+  @@map("stock_movements")
+}
+
+model Customer {
+  id              String       @id @default(uuid()) @db.Uuid
+  depotId         String       @map("depot_id") @db.Uuid
+  name            String
+  phone           String?
+  email           String?
+  address         String?
+  type            CustomerType @default(RETAILER)
+  creditLimit     Decimal?     @map("credit_limit") @db.Decimal(14, 2)
+  paymentTermDays Int?         @map("payment_term_days")
+  notes           String?
+  isActive        Boolean      @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot       Depot        @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  salesOrders SalesOrder[]
+  payments    Payment[]
+
+  @@index([depotId])
+  @@index([depotId, name])
+  @@map("customers")
+}
+
+/// Invoice header. Balance due is derived from payments; it is not stored here.
+model SalesOrder {
+  id            String           @id @default(uuid()) @db.Uuid
+  depotId       String           @map("depot_id") @db.Uuid
+  customerId    String           @map("customer_id") @db.Uuid
+  invoiceNumber String           @map("invoice_number")
+  status        SalesOrderStatus @default(DRAFT)
+  subtotal      Decimal          @db.Decimal(14, 2)
+  discountTotal Decimal          @default(0) @map("discount_total") @db.Decimal(14, 2)
+  total         Decimal          @db.Decimal(14, 2)
+  orderDate     DateTime         @default(now()) @map("order_date")
+  dueDate       DateTime?        @map("due_date")
+  notes         String?
+  createdById   String           @map("created_by_id") @db.Uuid
+  completedAt   DateTime?        @map("completed_at")
+  voidedAt      DateTime?        @map("voided_at")
+  voidReason    String?          @map("void_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot              Depot               @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  customer           Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  createdBy          User                @relation("SalesOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  items              SaleItem[]
+  paymentAllocations PaymentAllocation[]
+  stockMovements     StockMovement[]
+
+  @@unique([depotId, invoiceNumber])
+  @@index([depotId])
+  @@index([depotId, customerId, status])
+  @@index([depotId, orderDate])
+  @@map("sales_orders")
+}
+
+/// One invoice line. quantity is what the user entered in productUnit; quantityBase is the
+/// canonical amount deducted from stock (quantity * conversionFactor).
+model SaleItem {
+  id              String   @id @default(uuid()) @db.Uuid
+  depotId         String   @map("depot_id") @db.Uuid
+  saleOrderId     String   @map("sale_order_id") @db.Uuid
+  productId       String   @map("product_id") @db.Uuid
+  productUnitId   String   @map("product_unit_id") @db.Uuid
+  quantity        Decimal  @db.Decimal(18, 3)
+  quantityBase    Decimal  @map("quantity_base") @db.Decimal(18, 3)
+  unitPrice       Decimal  @map("unit_price") @db.Decimal(14, 2)
+  discountAmount  Decimal  @default(0) @map("discount_amount") @db.Decimal(14, 2)
+  lineTotal       Decimal  @map("line_total") @db.Decimal(14, 2)
+  costPerBaseUnit Decimal? @map("cost_per_base_unit") @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot       Depot       @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  saleOrder   SalesOrder  @relation(fields: [saleOrderId], references: [id], onDelete: Cascade)
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productUnit ProductUnit @relation(fields: [productUnitId], references: [id], onDelete: Restrict)
+
+  @@index([depotId])
+  @@index([depotId, saleOrderId])
+  @@index([depotId, productId])
+  @@map("sale_items")
+}
+
+/// Payment received from a customer. Payments are linked to invoices only through
+/// payment_allocations, so one payment can cover several invoices or stay unallocated
+/// as customer credit.
+model Payment {
+  id           String        @id @default(uuid()) @db.Uuid
+  depotId      String        @map("depot_id") @db.Uuid
+  customerId   String        @map("customer_id") @db.Uuid
+  amount       Decimal       @db.Decimal(14, 2)
+  method       PaymentMethod @default(CASH)
+  reference    String?
+  paidAt       DateTime      @default(now()) @map("paid_at")
+  receivedById String?       @map("received_by_id") @db.Uuid
+  notes        String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  depot       Depot               @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  customer    Customer            @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  receivedBy  User?               @relation("PaymentReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+  allocations PaymentAllocation[]
+
+  @@index([depotId])
+  @@index([depotId, customerId, paidAt])
+  @@map("payments")
+}
+
+/// Applies part or all of a payment to one invoice. The service must keep the sum of a
+/// payment's allocations at or below payments.amount. Amounts use NUMERIC(14,2).
+model PaymentAllocation {
+  id           String  @id @default(uuid()) @db.Uuid
+  depotId      String  @map("depot_id") @db.Uuid
+  paymentId    String  @map("payment_id") @db.Uuid
+  salesOrderId String  @map("sales_order_id") @db.Uuid
+  amount       Decimal @db.Decimal(14, 2)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  depot      Depot      @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  payment    Payment    @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, salesOrderId])
+  @@index([depotId])
+  @@index([depotId, paymentId])
+  @@index([depotId, salesOrderId])
+  @@map("payment_allocations")
+}
+
+model Supplier {
+  id          String  @id @default(uuid()) @db.Uuid
+  depotId     String  @map("depot_id") @db.Uuid
+  name        String
+  contactName String? @map("contact_name")
+  phone       String?
+  email       String?
+  address     String?
+  notes       String?
+  isActive    Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot          Depot           @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  purchaseOrders PurchaseOrder[]
+
+  @@unique([depotId, name])
+  @@index([depotId])
+  @@map("suppliers")
+}
+
+/// Purchase header. Amount owed per supplier is derived from purchases and payments (Phase 3, FR-39).
+model PurchaseOrder {
+  id              String              @id @default(uuid()) @db.Uuid
+  depotId         String              @map("depot_id") @db.Uuid
+  supplierId      String              @map("supplier_id") @db.Uuid
+  referenceNumber String              @map("reference_number")
+  status          PurchaseOrderStatus @default(DRAFT)
+  subtotal        Decimal             @default(0) @db.Decimal(14, 2)
+  discountTotal   Decimal             @default(0) @map("discount_total") @db.Decimal(14, 2)
+  total           Decimal             @default(0) @db.Decimal(14, 2)
+  orderedAt       DateTime?           @map("ordered_at")
+  receivedAt      DateTime?           @map("received_at")
+  notes           String?
+  createdById     String              @map("created_by_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot          Depot           @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  supplier       Supplier        @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy      User            @relation("PurchaseOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  items          PurchaseItem[]
+  stockMovements StockMovement[]
+
+  @@unique([depotId, referenceNumber])
+  @@index([depotId])
+  @@index([depotId, supplierId, status])
+  @@index([depotId, orderedAt])
+  @@map("purchase_orders")
+}
+
+/// One purchase line. Batch number and expiry are copied into a Batch when the purchase is received.
+model PurchaseItem {
+  id              String    @id @default(uuid()) @db.Uuid
+  depotId         String    @map("depot_id") @db.Uuid
+  purchaseOrderId String    @map("purchase_order_id") @db.Uuid
+  productId       String    @map("product_id") @db.Uuid
+  productUnitId   String    @map("product_unit_id") @db.Uuid
+  quantity        Decimal   @db.Decimal(18, 3)
+  quantityBase    Decimal   @map("quantity_base") @db.Decimal(18, 3)
+  unitCost        Decimal   @map("unit_cost") @db.Decimal(14, 2)
+  lineTotal       Decimal   @map("line_total") @db.Decimal(14, 2)
+  batchNumber     String?   @map("batch_number")
+  expiryDate      DateTime? @map("expiry_date") @db.Date
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  depot         Depot         @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productUnit   ProductUnit   @relation(fields: [productUnitId], references: [id], onDelete: Restrict)
+
+  @@index([depotId])
+  @@index([depotId, purchaseOrderId])
+  @@index([depotId, productId])
+  @@map("purchase_items")
+}
+
+/// Append-only audit trail. depot_id is null only for platform-level actions (e.g. depot approval).
+model AuditLog {
+  id          String  @id @default(uuid()) @db.Uuid
+  depotId     String? @map("depot_id") @db.Uuid
+  actorUserId String? @map("actor_user_id") @db.Uuid
+  action      String
+  entityType  String  @map("entity_type")
+  entityId    String? @map("entity_id") @db.Uuid
+  before      Json?
+  after       Json?
+  ipAddress   String? @map("ip_address")
+  metadata    Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  depot Depot? @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  actor User?  @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([depotId])
+  @@index([depotId, createdAt])
+  @@index([depotId, entityType, entityId])
+  @@index([actorUserId])
+  @@map("audit_logs")
+}
