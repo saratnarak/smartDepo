@@ -23,7 +23,8 @@
   --sidebar-soft: #15423c;
   --shadow-sm: 0 1px 2px rgb(16 24 40 / 6%);
   --shadow-md: 0 12px 32px rgb(16 24 40 / 10%);
-  --radius-sm: 2px;
+  /* UI radii are intentionally limited to 5px and 10px. */
+  --radius-sm: 5px;
   --radius-md: 5px;
   --radius-lg: 10px;
 }
@@ -149,7 +150,7 @@ textarea:disabled {
   width: 44px;
   height: 44px;
   place-items: center;
-  border-radius: 13px;
+  border-radius: var(--radius-lg);
   background: linear-gradient(140deg, #14b8a6, #0f766e 55%, #0b5c56);
   color: #ffffff;
   font-size: 0.85rem;
@@ -182,7 +183,7 @@ textarea:disabled {
   padding: 3px;
   gap: 2px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
 }
 
@@ -190,7 +191,7 @@ textarea:disabled {
   min-width: 38px;
   padding: 0.3rem 0.6rem;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   font-size: 0.78rem;
@@ -297,7 +298,7 @@ textarea:disabled {
   height: 38px;
   place-items: center;
   border: 1px solid transparent;
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: transparent;
   color: inherit;
   font-size: 1.1rem;
@@ -337,7 +338,7 @@ textarea:disabled {
   width: 100%;
   padding: 0.68rem 0.78rem;
   border: 1px solid var(--line-strong);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--foreground);
   transition:
@@ -422,7 +423,7 @@ textarea:disabled {
   height: 22px;
   border: 3px solid rgb(15 118 110 / 20%);
   border-top-color: var(--primary);
-  border-radius: 50%;
+  border-radius: var(--radius-lg);
   animation: spin 750ms linear infinite;
 }
 
@@ -472,7 +473,7 @@ textarea:disabled {
 
 .auth-layout__decor {
   position: fixed;
-  border-radius: 50%;
+  border-radius: var(--radius-lg);
   filter: blur(2px);
   opacity: 0.55;
   pointer-events: none;
@@ -540,7 +541,7 @@ textarea:disabled {
   height: 64px;
   place-items: center;
   margin: 0 auto 1.1rem;
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   font-size: 1.8rem;
   font-weight: 700;
 }
@@ -645,7 +646,7 @@ textarea:disabled {
   align-items: center;
   gap: 0.7rem;
   padding: 0.68rem 0.75rem;
-  border-radius: 11px;
+  border-radius: var(--radius-sm);
   color: rgb(255 255 255 / 72%);
   font-size: 0.9rem;
   font-weight: 600;
@@ -717,7 +718,7 @@ textarea:disabled {
   height: 38px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 50%;
+  border-radius: var(--radius-lg);
   background: #2dd4bf;
   color: #073b36;
   font-size: 0.78rem;
@@ -786,7 +787,7 @@ textarea:disabled {
 .topbar__depot {
   max-width: 220px;
   padding: 0.35rem 0.7rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--primary-soft);
   color: var(--primary-dark);
   font-size: 0.76rem;
@@ -957,7 +958,7 @@ textarea:disabled {
   height: 44px;
   flex: 0 0 auto;
   place-items: center;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--primary-soft);
   color: var(--primary);
   font-size: 0.75rem;
@@ -991,7 +992,7 @@ textarea:disabled {
   align-items: center;
   gap: 0.35rem;
   padding: 0.28rem 0.6rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 0.74rem;
   font-weight: 700;
   line-height: 1.2;
@@ -1001,7 +1002,7 @@ textarea:disabled {
 .status-badge__dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--radius-sm);
   background: currentcolor;
 }
 
@@ -1049,7 +1050,7 @@ textarea:disabled {
 .filter-tab {
   padding: 0.35rem 0.65rem;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
   font-size: 0.78rem;
@@ -1154,7 +1155,7 @@ textarea:disabled {
 
 .skeleton {
   height: 18px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: linear-gradient(90deg, #edf1f3, #f6f8f9, #edf1f3);
   background-size: 200% 100%;
   animation: shimmer 1.2s linear infinite;

@@ -78,6 +78,16 @@ earlier report was present when they were written.
 - Created the root commit `7c2db45 Initial SmartDepo implementation` with 153 files.
 - Pushed `main` to `origin/main`. The remote branch now points at commit `7c2db45`.
 
+## UI update: low border radii
+
+- Changed the shared radius tokens so every UI radius resolves to either `5px` or `10px`.
+- Replaced pill-shaped controls (`999px`), circular avatars/badges/spinners, and one-off values
+  (`2px`, `6px`, `11px`, `12px`, `13px`, `20px`) with the shared radius variables.
+- Small controls, badges, tabs, nav items, inputs, and panels use `5px`; cards, dialogs, avatars,
+  status marks, and larger containers use `10px`.
+- `pnpm format:check`, `pnpm lint`, `pnpm --filter web test`, and `pnpm --filter web build` passed.
+- This change is uncommitted.
+
 ## In progress: Task 006B (staff, passwords, depot settings, auth hardening)
 
 Target FRs: FR-7, FR-8, FR-9, FR-10, and the plan user-limit part of FR-4.
