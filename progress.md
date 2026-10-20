@@ -60,6 +60,24 @@ earlier report was present when they were written.
 - `pnpm --filter web test:e2e` passed: 1 test.
 - `pnpm install --frozen-lockfile` passed.
 
+### Verification before the first git push
+
+- `pnpm format:check` passed.
+- `pnpm lint` passed.
+- `pnpm test` passed: API 9 suites and 41 tests, web 5 suites and 18 tests.
+- `pnpm --filter api test:tenant` passed: 3 suites and 39 tests against `smartdepo_test`.
+- `pnpm build` passed for both the API and the web app.
+
+### Git repository and GitHub
+
+- Initialised a git repository on branch `main`.
+- Added remote `origin` as `https://github.com/saratnarak/smartDepo.git`.
+- Added `test-results/` and `playwright-report/` to `.gitignore` so generated Playwright output is
+  not committed.
+- Confirmed `.env` is ignored and only `.env.example` is tracked.
+- Created the root commit `7c2db45 Initial SmartDepo implementation` with 153 files.
+- Pushed `main` to `origin/main`. The remote branch now points at commit `7c2db45`.
+
 ## In progress: Task 006B (staff, passwords, depot settings, auth hardening)
 
 Target FRs: FR-7, FR-8, FR-9, FR-10, and the plan user-limit part of FR-4.
