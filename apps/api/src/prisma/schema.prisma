@@ -63,9 +63,28 @@ enum StockMovementType {
 }
 
 enum CustomerType {
-  RETAILER
-  RESTAURANT
-  OTHER
+  RETAIL
+  WHOLESALE
+}
+
+/// Payment state of an invoice. Derived from the payment allocations and kept on the invoice so
+/// lists can filter on it. The money itself always comes from invoices and payments.
+enum PaymentStatus {
+  PAID
+  PARTIAL
+  UNPAID
+}
+
+/// A discount is either a fixed amount or a percentage of the line or invoice subtotal.
+enum DiscountType {
+  AMOUNT
+  PERCENT
+}
+
+/// How the depot reacts when an invoice would push a customer past their credit limit.
+enum CreditLimitMode {
+  WARN
+  BLOCK
 }
 
 enum SalesOrderStatus {
@@ -117,9 +136,11 @@ model Depot {
   currency           String      @default("KHR") @db.VarChar(3)
   locale             Locale      @default(EN)
   invoiceFooter      String?     @map("invoice_footer")
+  logoKey            String?     @map("logo_key")
   status             DepotStatus @default(PENDING)
-  rejectionReason    String?     @map("rejection_reason")
+  statusReason       String?     @map("status_reason")
   allowNegativeStock Boolean     @default(false) @map("allow_negative_stock")
+  creditLimitMode    CreditLimitMode @default(WARN) @map("credit_limit_mode")
   approvedAt         DateTime?   @map("approved_at")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -131,6 +152,7 @@ model Depot {
   products           Product[]
   productUnits       ProductUnit[]
   prices             Price[]
+  priceHistory       PriceHistory[]
   batches            Batch[]
   stockMovements     StockMovement[]
   customers          Customer[]
@@ -142,6 +164,7 @@ model Depot {
   purchaseOrders     PurchaseOrder[]
   purchaseItems      PurchaseItem[]
   auditLogs          AuditLog[]
+  saleItemBatches    SaleItemBatch[]
 
   @@index([status])
   @@map("depots")
@@ -193,6 +216,7 @@ model User {
   phone               String?   @unique
   passwordHash        String    @map("password_hash")
   isActive            Boolean   @default(true) @map("is_active")
+  mustChangePassword  Boolean   @default(false) @map("must_change_password")
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockedUntil         DateTime? @map("locked_until")
   lastLoginAt         DateTime? @map("last_login_at")
@@ -206,6 +230,7 @@ model User {
   salesOrders    SalesOrder[]    @relation("SalesOrderCreatedBy")
   payments       Payment[]       @relation("PaymentReceivedBy")
   purchaseOrders PurchaseOrder[] @relation("PurchaseOrderCreatedBy")
+  priceHistory   PriceHistory[]  @relation("PriceHistoryChangedBy")
   auditLogs      AuditLog[]      @relation("AuditLogActor")
 
   @@index([depotId])
@@ -227,6 +252,7 @@ model Category {
 
   @@unique([depotId, name])
   @@index([depotId])
+  @@index([depotId, isActive])
   @@map("categories")
 }
 
@@ -238,8 +264,12 @@ model Product {
   name         String
   description  String?
   reorderLevel Decimal @default(0) @map("reorder_level") @db.Decimal(18, 3)
+  /// The last purchase cost for one base unit. Stored with four decimals so the cost of a small
+  /// unit (for example a bottle out of a carton) stays exact; only the display rounds it.
+  costPrice    Decimal @default(0) @map("cost_price") @db.Decimal(14, 4)
   trackBatches Boolean @default(false) @map("track_batches")
   isActive     Boolean @default(true) @map("is_active")
+  imageKey     String? @map("image_key")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -247,6 +277,7 @@ model Product {
   depot          Depot           @relation(fields: [depotId], references: [id], onDelete: Restrict)
   category       Category?       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   productUnits   ProductUnit[]
+  priceHistory   PriceHistory[]
   batches        Batch[]
   stockMovements StockMovement[]
   saleItems      SaleItem[]
@@ -256,6 +287,8 @@ model Product {
   @@index([depotId])
   @@index([depotId, categoryId])
   @@index([depotId, name])
+  @@index([depotId, isActive])
+  @@index([depotId, isActive, name])
   @@map("products")
 }
 
@@ -276,12 +309,14 @@ model ProductUnit {
   depot         Depot          @relation(fields: [depotId], references: [id], onDelete: Restrict)
   product       Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
   prices        Price[]
+  priceHistory  PriceHistory[]
   saleItems     SaleItem[]
   purchaseItems PurchaseItem[]
 
   @@unique([productId, name])
   @@index([depotId])
   @@index([depotId, productId])
+  @@index([depotId, productId, isActive])
   @@map("product_units")
 }
 
@@ -296,13 +331,40 @@ model Price {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  depot       Depot       @relation(fields: [depotId], references: [id], onDelete: Restrict)
-  productUnit ProductUnit @relation(fields: [productUnitId], references: [id], onDelete: Restrict)
+  depot       Depot          @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  productUnit ProductUnit    @relation(fields: [productUnitId], references: [id], onDelete: Restrict)
+  history     PriceHistory[]
 
   @@unique([productUnitId, type])
   @@index([depotId])
   @@index([depotId, productUnitId])
   @@map("prices")
+}
+
+/// Immutable price change history. One row per actual amount change, kept for reporting and audit.
+model PriceHistory {
+  id            String    @id @default(uuid()) @db.Uuid
+  depotId       String    @map("depot_id") @db.Uuid
+  priceId       String    @map("price_id") @db.Uuid
+  productId     String    @map("product_id") @db.Uuid
+  productUnitId String    @map("product_unit_id") @db.Uuid
+  type          PriceType
+  amount        Decimal   @db.Decimal(14, 2)
+  changedById   String?   @map("changed_by_id") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  depot       Depot       @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  price       Price       @relation(fields: [priceId], references: [id], onDelete: Restrict)
+  product     Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productUnit ProductUnit @relation(fields: [productUnitId], references: [id], onDelete: Restrict)
+  changedBy   User?       @relation("PriceHistoryChangedBy", fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([depotId])
+  @@index([depotId, productUnitId, createdAt])
+  @@index([depotId, productId, createdAt])
+  @@index([priceId])
+  @@index([changedById])
+  @@map("price_histories")
 }
 
 model Batch {
@@ -319,6 +381,7 @@ model Batch {
   depot          Depot           @relation(fields: [depotId], references: [id], onDelete: Restrict)
   product        Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
   stockMovements StockMovement[]
+  saleItemBatches SaleItemBatch[]
 
   @@unique([productId, batchNumber])
   @@index([depotId])
@@ -334,7 +397,8 @@ model StockMovement {
   batchId         String?           @map("batch_id") @db.Uuid
   type            StockMovementType
   quantity        Decimal           @db.Decimal(18, 3)
-  unitCost        Decimal?          @map("unit_cost") @db.Decimal(14, 2)
+  /// Cost per base unit with four decimals; the display rounds it to money.
+  unitCost        Decimal?          @map("unit_cost") @db.Decimal(14, 4)
   reason          String?
   saleOrderId     String?           @map("sale_order_id") @db.Uuid
   purchaseOrderId String?           @map("purchase_order_id") @db.Uuid
@@ -351,6 +415,7 @@ model StockMovement {
 
   @@index([depotId])
   @@index([depotId, productId, createdAt])
+  @@index([depotId, type, createdAt])
   @@index([depotId, batchId])
   @@index([saleOrderId])
   @@index([purchaseOrderId])
@@ -364,11 +429,13 @@ model Customer {
   phone           String?
   email           String?
   address         String?
-  type            CustomerType @default(RETAILER)
+  type            CustomerType @default(RETAIL)
   creditLimit     Decimal?     @map("credit_limit") @db.Decimal(14, 2)
   paymentTermDays Int?         @map("payment_term_days")
   notes           String?
   isActive        Boolean      @default(true) @map("is_active")
+  /// The default cash customer of a depot. It cannot be archived or deleted.
+  isWalkIn        Boolean      @default(false) @map("is_walk_in")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -379,6 +446,7 @@ model Customer {
 
   @@index([depotId])
   @@index([depotId, name])
+  @@index([depotId, isActive])
   @@map("customers")
 }
 
@@ -388,13 +456,21 @@ model SalesOrder {
   depotId       String           @map("depot_id") @db.Uuid
   customerId    String           @map("customer_id") @db.Uuid
   invoiceNumber String           @map("invoice_number")
-  status        SalesOrderStatus @default(DRAFT)
+  status        SalesOrderStatus @default(COMPLETED)
+  paymentStatus PaymentStatus    @default(UNPAID) @map("payment_status")
   subtotal      Decimal          @db.Decimal(14, 2)
   discountTotal Decimal          @default(0) @map("discount_total") @db.Decimal(14, 2)
+  /// How the invoice discount was requested: a fixed amount or a percentage of the subtotal.
+  discountType  DiscountType?    @map("discount_type")
+  discountValue Decimal?         @map("discount_value") @db.Decimal(18, 4)
   total         Decimal          @db.Decimal(14, 2)
   orderDate     DateTime         @default(now()) @map("order_date")
   dueDate       DateTime?        @map("due_date")
   notes         String?
+  /// Set when a void leaves money that was already paid and now has to be refunded.
+  refundDue     Decimal          @default(0) @map("refund_due") @db.Decimal(14, 2)
+  /// Client supplied key that makes a retried create return the same invoice.
+  idempotencyKey String?         @map("idempotency_key")
   createdById   String           @map("created_by_id") @db.Uuid
   completedAt   DateTime?        @map("completed_at")
   voidedAt      DateTime?        @map("voided_at")
@@ -411,9 +487,14 @@ model SalesOrder {
   stockMovements     StockMovement[]
 
   @@unique([depotId, invoiceNumber])
+  @@unique([depotId, idempotencyKey])
   @@index([depotId])
   @@index([depotId, customerId, status])
   @@index([depotId, orderDate])
+  @@index([depotId, status, orderDate])
+  @@index([depotId, createdById])
+  @@index([depotId, paymentStatus])
+  @@index([depotId, dueDate])
   @@map("sales_orders")
 }
 
@@ -429,21 +510,47 @@ model SaleItem {
   quantityBase    Decimal  @map("quantity_base") @db.Decimal(18, 3)
   unitPrice       Decimal  @map("unit_price") @db.Decimal(14, 2)
   discountAmount  Decimal  @default(0) @map("discount_amount") @db.Decimal(14, 2)
+  /// How the line discount was requested: a fixed amount or a percentage of the line gross.
+  discountType    DiscountType? @map("discount_type")
+  discountValue   Decimal? @map("discount_value") @db.Decimal(18, 4)
   lineTotal       Decimal  @map("line_total") @db.Decimal(14, 2)
-  costPerBaseUnit Decimal? @map("cost_per_base_unit") @db.Decimal(14, 2)
+  /// The product cost per base unit at the moment of the sale, used by the profit reports.
+  costPerBaseUnit Decimal? @map("cost_per_base_unit") @db.Decimal(14, 4)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  depot       Depot       @relation(fields: [depotId], references: [id], onDelete: Restrict)
-  saleOrder   SalesOrder  @relation(fields: [saleOrderId], references: [id], onDelete: Cascade)
-  product     Product     @relation(fields: [productId], references: [id], onDelete: Restrict)
-  productUnit ProductUnit @relation(fields: [productUnitId], references: [id], onDelete: Restrict)
+  depot       Depot            @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  saleOrder   SalesOrder       @relation(fields: [saleOrderId], references: [id], onDelete: Cascade)
+  product     Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  productUnit ProductUnit      @relation(fields: [productUnitId], references: [id], onDelete: Restrict)
+  batches     SaleItemBatch[]
 
   @@index([depotId])
   @@index([depotId, saleOrderId])
   @@index([depotId, productId])
   @@map("sale_items")
+}
+
+/// The batches a sold line was taken from. Selling a batch-tracked product allocates the quantity
+/// to the earliest unexpired batches first, and a void returns exactly these batches.
+model SaleItemBatch {
+  id         String  @id @default(uuid()) @db.Uuid
+  depotId    String  @map("depot_id") @db.Uuid
+  saleItemId String  @map("sale_item_id") @db.Uuid
+  batchId    String  @map("batch_id") @db.Uuid
+  quantity   Decimal @db.Decimal(18, 3)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  depot    Depot    @relation(fields: [depotId], references: [id], onDelete: Restrict)
+  saleItem SaleItem @relation(fields: [saleItemId], references: [id], onDelete: Cascade)
+  batch    Batch    @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([saleItemId, batchId])
+  @@index([depotId])
+  @@index([depotId, batchId])
+  @@map("sale_item_batches")
 }
 
 /// Payment received from a customer. Payments are linked to invoices only through
@@ -513,6 +620,7 @@ model Supplier {
 
   @@unique([depotId, name])
   @@index([depotId])
+  @@index([depotId, isActive])
   @@map("suppliers")
 }
 
@@ -543,6 +651,7 @@ model PurchaseOrder {
   @@unique([depotId, referenceNumber])
   @@index([depotId])
   @@index([depotId, supplierId, status])
+  @@index([depotId, status, createdAt])
   @@index([depotId, orderedAt])
   @@map("purchase_orders")
 }

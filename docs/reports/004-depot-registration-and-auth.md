@@ -153,9 +153,6 @@ Tests:
 ready for review
 
 ## Human review (filled in by the human only)
-Decision: pending
-
-Notes:
    ## Human review (filled in by the human only)
    Decision: approved
-   Notes: Approved after local checks. Accepted for now: stateless refresh tokens, the 15-minute access-token window after suspension, and the in-memory rate limiter. Reject applies only to PENDING depots. A depots.status_reason column and a check that the auth_* functions pin search_path are done in task 006.
+   Notes: Approved after local checks. Accepted for now: stateless refresh tokens, the 15-minute access-token window after suspension, and the in-memory rate limiter.

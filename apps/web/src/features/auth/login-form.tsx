@@ -8,7 +8,9 @@ import { AuthCard } from '@/components/auth-card';
 import { useI18n } from '@/components/i18n-provider';
 import { ApiError } from '@/lib/api-error';
 import { getErrorMessage } from '@/lib/errors';
+import { defaultPathForRole } from '@/lib/navigation';
 import { loginWithPassword } from '@/lib/session-client';
+import type { SessionUser } from '@/lib/types';
 import { useSessionStore } from '@/stores/session-store';
 
 interface LoginFormProps {
@@ -33,19 +35,23 @@ export function LoginForm({ nextPath }: LoginFormProps) {
   const [busy, setBusy] = useState(false);
 
   const destination = useCallback(
-    (role: string | undefined): string => {
+    (sessionUser: SessionUser): string => {
+      if (sessionUser.mustChangePassword) {
+        return '/change-password';
+      }
+
       if (nextPath !== undefined) {
         return nextPath;
       }
 
-      return role === 'PLATFORM_ADMIN' ? '/platform/depots' : '/dashboard';
+      return defaultPathForRole(sessionUser.role);
     },
     [nextPath],
   );
 
   useEffect(() => {
     if (status === 'authenticated' && user !== null) {
-      router.replace(destination(user.role));
+      router.replace(destination(user));
     }
   }, [status, user, destination, router]);
 
@@ -105,7 +111,7 @@ export function LoginForm({ nextPath }: LoginFormProps) {
 
     try {
       const session = await loginWithPassword(identifier.trim(), password);
-      router.replace(destination(session.user.role));
+      router.replace(destination(session.user));
     } catch (error) {
       if (error instanceof ApiError) {
         switch (error.detailReason) {

@@ -17,6 +17,7 @@ const USER: SessionUser = {
   phone: '012345678',
   role: 'OWNER',
   depotId: 'depot-1',
+  mustChangePassword: false,
 };
 
 function jsonResponse(body: unknown, status = 200): Response {

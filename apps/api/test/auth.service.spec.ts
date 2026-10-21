@@ -1,4 +1,4 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { jest } from '@jest/globals';
 
 import { AuthService } from '../src/modules/auth/auth.service.js';
@@ -16,6 +16,7 @@ const USER: AuthUserRecord = {
   phone: '012345678',
   passwordHash: 'stored-hash',
   isActive: true,
+  mustChangePassword: false,
   failedLoginAttempts: 0,
   lockedUntil: null,
   depotStatus: 'APPROVED',
@@ -117,17 +118,119 @@ describe('AuthService', () => {
     );
 
     expect(result.accessToken).toBe('access');
-    expect(result.user).toMatchObject({ id: USER.id, role: 'OWNER', depotId: USER.depotId });
+    expect(result.user).toMatchObject({
+      id: USER.id,
+      role: 'OWNER',
+      depotId: USER.depotId,
+      mustChangePassword: false,
+    });
     expect(auditCreate).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ action: 'USER_LOGIN' }) }),
     );
   });
 
+  it('reports must_change_password after an owner password reset', async () => {
+    const { service, prisma, passwords, tokens } = createService();
+    prisma.authFindUser.mockResolvedValue({ ...USER, mustChangePassword: true });
+    passwords.verify.mockResolvedValue(true);
+    prisma.runAsTenant.mockImplementation(async (_context, work) =>
+      work({ auditLog: { create: jest.fn() } }),
+    );
+    tokens.issuePair.mockResolvedValue(TOKEN_PAIR);
+
+    const result = await service.login({ identifier: USER.email, password: 'Password1' }, null);
+
+    expect(result.user.mustChangePassword).toBe(true);
+  });
+
+  it('changes the caller password after verifying the current one', async () => {
+    const { service, prisma, passwords } = createService();
+    const userUpdate = jest.fn();
+    const auditCreate = jest.fn();
+    prisma.authGetUser.mockResolvedValue(USER);
+    passwords.verify.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    passwords.hash.mockResolvedValue('new-hash');
+    prisma.runAsTenant.mockImplementation(async (_context, work) =>
+      work({ user: { update: userUpdate }, auditLog: { create: auditCreate } }),
+    );
+
+    const result = await service.changePassword(
+      { userId: USER.id, role: 'OWNER', depotId: USER.depotId },
+      { currentPassword: 'CurrentPassword1', newPassword: 'NewPassword2' },
+    );
+
+    expect(result).toEqual({ mustChangePassword: false });
+    expect(passwords.verify).toHaveBeenNthCalledWith(1, 'CurrentPassword1', USER.passwordHash);
+    expect(userUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: USER.id },
+        data: expect.objectContaining({
+          passwordHash: 'new-hash',
+          mustChangePassword: false,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        }),
+      }),
+    );
+
+    const audit = auditCreate.mock.calls[0][0] as { data: Record<string, unknown> };
+    expect(audit.data).toMatchObject({ action: 'PASSWORD_CHANGED', entityId: USER.id });
+    expect(JSON.stringify(audit.data)).not.toContain('new-hash');
+    expect(JSON.stringify(audit.data)).not.toContain('NewPassword2');
+  });
+
+  it('rejects a wrong current password without updating anything', async () => {
+    const { service, prisma, passwords } = createService();
+    const userUpdate = jest.fn();
+    prisma.authGetUser.mockResolvedValue(USER);
+    passwords.verify.mockResolvedValue(false);
+    prisma.runAsTenant.mockImplementation(async (_context, work) =>
+      work({ user: { update: userUpdate }, auditLog: { create: jest.fn() } }),
+    );
+
+    await expect(
+      service.changePassword(
+        { userId: USER.id, role: 'OWNER', depotId: USER.depotId },
+        { currentPassword: 'WrongPassword1', newPassword: 'NewPassword2' },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(userUpdate).not.toHaveBeenCalled();
+  });
+
+  it('rejects a new password identical to the current one', async () => {
+    const { service, prisma, passwords } = createService();
+    prisma.authGetUser.mockResolvedValue(USER);
+    passwords.verify.mockResolvedValue(true);
+
+    await expect(
+      service.changePassword(
+        { userId: USER.id, role: 'OWNER', depotId: USER.depotId },
+        { currentPassword: 'Password1', newPassword: 'Password1' },
+      ),
+    ).rejects.toThrow('New password must be different from the current password');
+  });
+
+  it('does not change a password when the token depot does not match the user', async () => {
+    const { service, prisma } = createService();
+    prisma.authGetUser.mockResolvedValue(USER);
+
+    await expect(
+      service.changePassword(
+        { userId: USER.id, role: 'OWNER', depotId: '99999999-9999-4999-8999-999999999999' },
+        { currentPassword: 'Password1', newPassword: 'NewPassword2' },
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+  });
+
   it('registers a pending depot and its owner inside the dedicated registration path', async () => {
     const { service, prisma, passwords } = createService();
     const auditCreate = jest.fn();
+    const subscriptionCreate = jest.fn();
     const transaction = {
       role: { findUnique: jest.fn().mockResolvedValue({ id: 'owner-role' }) },
+      plan: { findFirst: jest.fn().mockResolvedValue({ id: 'free-trial-plan' }) },
+      subscription: { create: subscriptionCreate },
       depot: {
         create: jest.fn().mockImplementation(({ data }) => ({ ...data })),
       },
@@ -156,6 +259,11 @@ describe('AuthService', () => {
     expect(transaction.depot.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ status: 'PENDING', email: 'owner@example.com' }),
+      }),
+    );
+    expect(subscriptionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ planId: 'free-trial-plan', status: 'ACTIVE' }),
       }),
     );
     expect(auditCreate).toHaveBeenCalledWith(

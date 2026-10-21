@@ -21,11 +21,13 @@ import { SWAGGER_SECURITY_SCHEME } from '../../common/bootstrap/configure-swagge
 import type { AuthenticatedPrincipal } from '../../common/tenant/tenant-context.js';
 import { AuthService } from './auth.service.js';
 import {
+  ChangePasswordResponseDto,
   LoginResponseDto,
   MeResponseDto,
   RefreshResponseDto,
   RegisterDepotResponseDto,
 } from './dto/auth-response.dto.js';
+import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { RegisterDepotDto } from './dto/register-depot.dto.js';
@@ -101,5 +103,24 @@ export class AuthController {
   @ApiUnauthorizedResponse({ description: 'The access token is missing, invalid, or expired.' })
   me(@CurrentUser() principal: AuthenticatedPrincipal) {
     return this.auth.me(principal);
+  }
+
+  @RequirePermissions(Permission.PASSWORD_CHANGE)
+  @HttpCode(200)
+  @Post('change-password')
+  @ApiBearerAuth(SWAGGER_SECURITY_SCHEME)
+  @ApiOperation({
+    summary: 'Change your own password',
+    description:
+      'Requires the current password. On success must_change_password is cleared and any login lockout is reset.',
+  })
+  @ApiBody({ type: ChangePasswordDto })
+  @ApiOkResponse({ type: ChangePasswordResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Validation failed, the current password is wrong, or the new one is unchanged.',
+  })
+  @ApiUnauthorizedResponse({ description: 'The access token is missing, invalid, or expired.' })
+  changePassword(@CurrentUser() principal: AuthenticatedPrincipal, @Body() dto: ChangePasswordDto) {
+    return this.auth.changePassword(principal, dto);
   }
 }

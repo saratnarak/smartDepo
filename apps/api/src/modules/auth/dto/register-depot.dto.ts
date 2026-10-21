@@ -2,6 +2,13 @@ import { ApiProperty } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsEmail, IsString, Length, Matches, MaxLength } from 'class-validator';
 
+import {
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_PATTERN,
+  PASSWORD_PATTERN_MESSAGE,
+} from '../../../common/validation/password.js';
+
 const trim = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
 
@@ -53,13 +60,13 @@ export class RegisterDepotDto {
   @ApiProperty({
     description: 'At least 8 characters with one letter and one number.',
     example: 'Password1',
-    minLength: 8,
-    maxLength: 72,
+    minLength: PASSWORD_MIN_LENGTH,
+    maxLength: PASSWORD_MAX_LENGTH,
   })
   @IsString()
-  @Length(8, 72)
-  @Matches(/^(?=.*[A-Za-z])(?=.*\d).+$/, {
-    message: 'password must contain at least one letter and one number',
+  @Length(PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH)
+  @Matches(PASSWORD_PATTERN, {
+    message: PASSWORD_PATTERN_MESSAGE,
   })
   password!: string;
 }

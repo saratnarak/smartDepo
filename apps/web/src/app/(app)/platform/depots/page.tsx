@@ -4,11 +4,25 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { useI18n } from '@/components/i18n-provider';
+import { Modal } from '@/components/modal';
 import { StatusBadge } from '@/components/status-badge';
-import { approveDepot, listDepots, rejectDepot, suspendDepot } from '@/lib/api-client';
+import {
+  approveDepot,
+  changeDepotPlan,
+  listDepots,
+  listPlans,
+  rejectDepot,
+  suspendDepot,
+} from '@/lib/api-client';
 import { getErrorMessage } from '@/lib/errors';
 import { formatDate } from '@/lib/format';
-import { DEPOT_STATUSES, type DepotAdminView, type DepotStatus, type Paginated } from '@/lib/types';
+import {
+  DEPOT_STATUSES,
+  type DepotAdminView,
+  type DepotStatus,
+  type Paginated,
+  type Plan,
+} from '@/lib/types';
 
 const PAGE_SIZE = 10;
 
@@ -30,6 +44,11 @@ export default function PlatformDepotsPage() {
   const [action, setAction] = useState<PendingAction | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [planDepot, setPlanDepot] = useState<DepotAdminView | null>(null);
+  const [planCode, setPlanCode] = useState('');
+  const [planBusy, setPlanBusy] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const requestId = useRef(0);
 
@@ -59,6 +78,26 @@ export default function PlatformDepotsPage() {
   useEffect(() => {
     void load();
   }, [load, reloadKey]);
+
+  useEffect(() => {
+    let active = true;
+
+    listPlans()
+      .then((result) => {
+        if (active) {
+          setPlans(result);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPlans([]);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const reload = () => {
     setNotice(null);
@@ -102,6 +141,39 @@ export default function PlatformDepotsPage() {
       setActionError(getErrorMessage(t, error));
     } finally {
       setActionBusy(false);
+    }
+  };
+
+  const openPlanDialog = (depot: DepotAdminView) => {
+    setPlanError(null);
+    setPlanDepot(depot);
+    setPlanCode(depot.plan?.code ?? plans[0]?.code ?? '');
+  };
+
+  const closePlanDialog = () => {
+    if (!planBusy) {
+      setPlanDepot(null);
+      setPlanError(null);
+    }
+  };
+
+  const savePlan = async () => {
+    if (planDepot === null || planCode === '') {
+      return;
+    }
+
+    setPlanBusy(true);
+    setPlanError(null);
+
+    try {
+      await changeDepotPlan(planDepot.id, planCode);
+      setPlanDepot(null);
+      setNotice(t('platform.planChanged'));
+      setReloadKey((value) => value + 1);
+    } catch (error) {
+      setPlanError(getErrorMessage(t, error));
+    } finally {
+      setPlanBusy(false);
     }
   };
 
@@ -227,7 +299,9 @@ export default function PlatformDepotsPage() {
                   <th scope="col">{t('platform.depot')}</th>
                   <th scope="col">{t('platform.ownerContact')}</th>
                   <th scope="col">{t('platform.createdAt')}</th>
+                  <th scope="col">{t('platform.plan')}</th>
                   <th scope="col">{t('platform.status')}</th>
+                  <th scope="col">{t('platform.statusReason')}</th>
                   <th scope="col" className="data-table__actions">
                     {t('platform.actions')}
                   </th>
@@ -250,7 +324,20 @@ export default function PlatformDepotsPage() {
                     </td>
                     <td>{formatDate(depot.createdAt, locale)}</td>
                     <td>
+                      <div className="table-primary">
+                        <strong>{depot.plan?.name ?? t('platform.noPlan')}</strong>
+                        {depot.plan === null ? null : <small>{depot.plan.code}</small>}
+                      </div>
+                    </td>
+                    <td>
                       <StatusBadge status={depot.status} />
+                    </td>
+                    <td>
+                      {depot.statusReason === null || depot.statusReason.trim() === '' ? (
+                        <span className="muted">{t('platform.noReason')}</span>
+                      ) : (
+                        <span className="status-reason">{depot.statusReason}</span>
+                      )}
                     </td>
                     <td className="data-table__actions">
                       <div className="row-actions">
@@ -304,6 +391,14 @@ export default function PlatformDepotsPage() {
                             {t('platform.approve')}
                           </button>
                         ) : null}
+
+                        <button
+                          type="button"
+                          className="button button--small button--quiet"
+                          onClick={() => openPlanDialog(depot)}
+                        >
+                          {t('platform.changePlan')}
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -340,6 +435,60 @@ export default function PlatformDepotsPage() {
           </div>
         ) : null}
       </section>
+
+      <Modal
+        open={planDepot !== null}
+        title={t('platform.planDialogTitle')}
+        busy={planBusy}
+        onClose={closePlanDialog}
+      >
+        <div className="panel__body">
+          <p className="muted">
+            {planDepot === null ? '' : t('platform.planDialogMessage', { name: planDepot.name })}
+          </p>
+
+          <div className="field">
+            <label htmlFor="plan-code">{t('platform.planLabel')}</label>
+            <select
+              id="plan-code"
+              value={planCode}
+              onChange={(event) => setPlanCode(event.target.value)}
+              disabled={planBusy}
+            >
+              {plans.map((plan) => (
+                <option key={plan.code} value={plan.code}>
+                  {plan.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {planError !== null ? (
+            <p className="alert alert--error" role="alert">
+              {planError}
+            </p>
+          ) : null}
+
+          <div className="row-actions">
+            <button
+              type="button"
+              className="button button--primary"
+              onClick={() => void savePlan()}
+              disabled={planBusy || planCode === ''}
+            >
+              {t('platform.confirmPlanChange')}
+            </button>
+            <button
+              type="button"
+              className="button button--quiet"
+              onClick={closePlanDialog}
+              disabled={planBusy}
+            >
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={action !== null}

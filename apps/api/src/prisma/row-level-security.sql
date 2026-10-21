@@ -104,6 +104,18 @@ CREATE POLICY "tenant_isolation" ON "prices"
     OR "depot_id" = NULLIF(current_setting('app.depot_id', true), '')::uuid
   );
 
+ALTER TABLE "price_histories" ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "tenant_isolation" ON "price_histories"
+  USING (
+    current_setting('app.is_platform_admin', true) = 'true'
+    OR "depot_id" = NULLIF(current_setting('app.depot_id', true), '')::uuid
+  )
+  WITH CHECK (
+    current_setting('app.is_platform_admin', true) = 'true'
+    OR "depot_id" = NULLIF(current_setting('app.depot_id', true), '')::uuid
+  );
+
 ALTER TABLE "batches" ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "tenant_isolation" ON "batches"

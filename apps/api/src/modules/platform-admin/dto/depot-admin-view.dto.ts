@@ -2,6 +2,14 @@ import { ApiProperty } from '@nestjs/swagger';
 
 import { DepotStatus } from '../../../generated/prisma/enums.js';
 
+export class DepotAdminPlanDto {
+  @ApiProperty({ example: 'FREE_TRIAL' })
+  code!: string;
+
+  @ApiProperty({ example: 'Free Trial' })
+  name!: string;
+}
+
 export class DepotAdminViewDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
@@ -21,11 +29,22 @@ export class DepotAdminViewDto {
   @ApiProperty({ enum: DepotStatus, example: DepotStatus.PENDING })
   status!: string;
 
-  @ApiProperty({ nullable: true, example: null })
-  rejectionReason!: string | null;
+  @ApiProperty({
+    nullable: true,
+    example: 'Documents could not be verified.',
+    description: 'Reason stored with the latest rejection or suspension; null when approved.',
+  })
+  statusReason!: string | null;
 
   @ApiProperty({ format: 'date-time', nullable: true, example: null })
   approvedAt!: Date | null;
+
+  @ApiProperty({
+    type: () => DepotAdminPlanDto,
+    nullable: true,
+    description: 'The active plan of the depot, or null when the depot has no plan.',
+  })
+  plan!: DepotAdminPlanDto | null;
 
   @ApiProperty({ format: 'date-time' })
   createdAt!: Date;

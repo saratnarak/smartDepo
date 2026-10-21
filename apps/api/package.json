@@ -18,10 +18,13 @@
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "test:tenant": "pnpm run db:test:prepare && NODE_OPTIONS=--experimental-vm-modules jest --config test/jest-tenant.config.cjs",
     "db:test:prepare": "node test/scripts/prepare-test-db.mjs",
+    "r2:smoke": "tsx scripts/r2-smoke.mjs",
     "seed:platform-admin": "node scripts/seed-platform-admin.mjs",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1153.0",
+    "@aws-sdk/s3-request-presigner": "^3.1153.0",
     "@nestjs/common": "12.2.0",
     "@nestjs/core": "12.2.0",
     "@nestjs/jwt": "12.0.3",

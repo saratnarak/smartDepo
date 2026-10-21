@@ -8,6 +8,7 @@ const USER: SessionUser = {
   phone: '012345678',
   role: 'OWNER',
   depotId: 'depot-1',
+  mustChangePassword: false,
 };
 
 const DEPOT = { id: 'depot-1', name: 'Depot A', status: 'APPROVED' as const };
@@ -41,6 +42,18 @@ describe('session store', () => {
 
     expect(useSessionStore.getState().accessToken).toBe('new-token');
     expect(useSessionStore.getState().user).toEqual(USER);
+  });
+
+  it('patches the current user and depot without replacing the session', () => {
+    useSessionStore.getState().setSession(USER, DEPOT, 'access-token');
+    useSessionStore.getState().updateUser({ mustChangePassword: true });
+    useSessionStore.getState().updateDepot({ name: 'Depot B' });
+
+    const state = useSessionStore.getState();
+    expect(state.status).toBe('authenticated');
+    expect(state.accessToken).toBe('access-token');
+    expect(state.user?.mustChangePassword).toBe(true);
+    expect(state.depot?.name).toBe('Depot B');
   });
 
   it('clears the session and records the logout reason', () => {

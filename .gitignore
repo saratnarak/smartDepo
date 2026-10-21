@@ -30,3 +30,7 @@ pnpm-debug.log*
 .DS_Store
 .idea/
 .vscode/
+
+# Local recordings and exports of the manual checks
+*.mp4
+smartdepo-logo.png

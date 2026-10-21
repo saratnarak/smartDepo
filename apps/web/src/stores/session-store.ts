@@ -15,6 +15,8 @@ interface SessionState {
   logoutReason: LogoutReason | null;
   setSession: (user: SessionUser, depot: SessionDepot | null, accessToken: string) => void;
   setAccessToken: (accessToken: string) => void;
+  updateUser: (patch: Partial<SessionUser>) => void;
+  updateDepot: (patch: Partial<SessionDepot>) => void;
   clearSession: (reason?: LogoutReason | null) => void;
   setLoading: () => void;
 }
@@ -36,6 +38,10 @@ export const useSessionStore = create<SessionState>((set) => ({
       logoutReason: null,
     }),
   setAccessToken: (accessToken) => set({ accessToken }),
+  updateUser: (patch) =>
+    set((state) => (state.user === null ? {} : { user: { ...state.user, ...patch } })),
+  updateDepot: (patch) =>
+    set((state) => (state.depot === null ? {} : { depot: { ...state.depot, ...patch } })),
   clearSession: (reason = null) =>
     set({
       user: null,

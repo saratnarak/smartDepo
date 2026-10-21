@@ -9,8 +9,14 @@ import en from '@/i18n/en.json';
 import './globals.css';
 
 export const metadata: Metadata = {
+  applicationName: en.app.name,
   title: en.app.name,
   description: en.app.tagline,
+  icons: {
+    icon: [{ url: '/brand/favicon.svg', type: 'image/svg+xml', sizes: 'any' }],
+    shortcut: '/brand/favicon.svg',
+    apple: [{ url: '/brand/logo-app-icon.svg', type: 'image/svg+xml' }],
+  },
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

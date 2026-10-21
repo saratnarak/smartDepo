@@ -32,7 +32,7 @@ interface DepotView {
   id: string;
   name: string;
   status: string;
-  rejectionReason: string | null;
+  statusReason: string | null;
 }
 
 describe('Depot registration and authentication (database)', () => {
@@ -152,6 +152,16 @@ describe('Depot registration and authentication (database)', () => {
     });
     expect(response.body.openapi).toMatch(/^3\./);
     expect(response.body.paths).toHaveProperty('/api/v1/auth/login');
+    expect(response.body.paths).toHaveProperty('/api/v1/auth/change-password');
+    expect(response.body.paths).toHaveProperty('/api/v1/users');
+    expect(response.body.paths).toHaveProperty('/api/v1/depot/settings');
+    expect(response.body.paths).toHaveProperty('/api/v1/categories');
+    expect(response.body.paths).toHaveProperty('/api/v1/products');
+    expect(response.body.paths).toHaveProperty('/api/v1/products/{id}');
+    expect(response.body.paths).toHaveProperty('/api/v1/products/{productId}/units');
+    expect(response.body.paths).toHaveProperty(
+      '/api/v1/products/{productId}/units/{unitId}/prices/{type}',
+    );
     expect(response.body.paths).toHaveProperty('/api/v1/platform/depots');
     expect(
       response.body.paths['/api/v1/auth/login'].post.requestBody.content['application/json'].schema
@@ -268,11 +278,24 @@ describe('Depot registration and authentication (database)', () => {
     );
   });
 
+  it('does not reject a depot that is no longer pending', async () => {
+    await request(server)
+      .post(`${api}/platform/depots/${depotAId}/reject`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'Rejection after approval is not allowed' })
+      .expect(409);
+  });
+
   it('logs in an approved owner with depot and role claims', async () => {
     ownerATokens = await login(emailA, ownerPassword);
 
     expect(ownerATokens.tokenType).toBe('Bearer');
-    expect(ownerATokens.user).toMatchObject({ id: ownerAId, role: 'OWNER', depotId: depotAId });
+    expect(ownerATokens.user).toMatchObject({
+      id: ownerAId,
+      role: 'OWNER',
+      depotId: depotAId,
+      mustChangePassword: false,
+    });
     expect(ownerATokens.depot).toMatchObject({ id: depotAId, status: 'APPROVED' });
     expect(ownerATokens.refreshToken).not.toBe('');
 
@@ -342,7 +365,7 @@ describe('Depot registration and authentication (database)', () => {
     expect(response.body).toMatchObject({
       id: depotBId,
       status: 'REJECTED',
-      rejectionReason: 'Incomplete registration documents',
+      statusReason: 'Incomplete registration documents',
     });
 
     await request(server)
@@ -366,7 +389,11 @@ describe('Depot registration and authentication (database)', () => {
       .send({ reason: 'Suspension test' })
       .expect(200);
 
-    expect(response.body).toMatchObject({ id: depotAId, status: 'SUSPENDED' });
+    expect(response.body).toMatchObject({
+      id: depotAId,
+      status: 'SUSPENDED',
+      statusReason: 'Suspension test',
+    });
 
     const loginResponse = await request(server)
       .post(`${api}/auth/login`)

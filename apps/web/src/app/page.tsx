@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
 import { FullPageLoading } from '@/components/full-page-loading';
+import { defaultPathForRole } from '@/lib/navigation';
 import { useSessionStore } from '@/stores/session-store';
 
 export default function HomePage() {
@@ -18,7 +19,7 @@ export default function HomePage() {
     }
 
     if (status === 'authenticated' && user !== null) {
-      router.replace(user.role === 'PLATFORM_ADMIN' ? '/platform/depots' : '/dashboard');
+      router.replace(user.mustChangePassword ? '/change-password' : defaultPathForRole(user.role));
     }
   }, [status, user, router]);
 

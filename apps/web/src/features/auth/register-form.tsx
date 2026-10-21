@@ -9,6 +9,7 @@ import { useI18n } from '@/components/i18n-provider';
 import { ApiError } from '@/lib/api-error';
 import { registerDepot } from '@/lib/api-client';
 import { getErrorMessage } from '@/lib/errors';
+import { defaultPathForRole } from '@/lib/navigation';
 import { useSessionStore } from '@/stores/session-store';
 
 interface RegisterFields {
@@ -43,7 +44,7 @@ export function RegisterForm() {
 
   useEffect(() => {
     if (status === 'authenticated' && user !== null) {
-      router.replace(user.role === 'PLATFORM_ADMIN' ? '/platform/depots' : '/dashboard');
+      router.replace(user.mustChangePassword ? '/change-password' : defaultPathForRole(user.role));
     }
   }, [status, user, router]);
 

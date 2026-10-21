@@ -14,7 +14,8 @@
     "format:check": "prettier --check .",
     "lint": "pnpm -r --if-present lint",
     "lint:fix": "pnpm -r --if-present lint:fix",
-    "seed": "tsx scripts/seed/seed.ts",
+    "r2:smoke": "pnpm --filter api r2:smoke",
+    "seed": "pnpm --filter api build && tsx scripts/seed/seed.ts",
     "test": "pnpm -r --if-present test"
   },
   "devDependencies": {

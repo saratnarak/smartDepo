@@ -9,40 +9,142 @@ import { FullPageLoading } from '@/components/full-page-loading';
 import { useI18n } from '@/components/i18n-provider';
 import { LanguageSwitch } from '@/components/language-switch';
 import { initials } from '@/lib/format';
+import {
+  canAccessPath,
+  defaultPathForRole,
+  visibleNavItems,
+  type NavIconName,
+} from '@/lib/navigation';
 import { logoutSession } from '@/lib/session-client';
-import type { UserRole } from '@/lib/types';
 import { useSessionStore } from '@/stores/session-store';
 
-const DEPOT_ROLES: UserRole[] = ['OWNER', 'SALES', 'STOCK_KEEPER', 'DELIVERY'];
+function NavIcon({ name }: { name: NavIconName }) {
+  if (name === 'products') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 8.5 12 4l8 4.5v9L12 22l-8-4.5z" />
+        <path d="M4 8.5 12 13l8-4.5M12 13v9" />
+      </svg>
+    );
+  }
 
-interface NavItem {
-  href: string;
-  labelKey: string;
-  roles: UserRole[];
-  icon: 'dashboard' | 'depots';
-}
+  if (name === 'categories') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 5h7l9 9-7 7-9-9z" />
+        <circle cx="8" cy="9" r="1.2" />
+      </svg>
+    );
+  }
 
-const NAV_ITEMS: NavItem[] = [
-  {
-    href: '/dashboard',
-    labelKey: 'nav.dashboard',
-    roles: DEPOT_ROLES,
-    icon: 'dashboard',
-  },
-  {
-    href: '/platform/depots',
-    labelKey: 'nav.platformDepots',
-    roles: ['PLATFORM_ADMIN'],
-    icon: 'depots',
-  },
-];
+  if (name === 'stock') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3.5 8.5 12 4l8.5 4.5V19H3.5z" />
+        <path d="M3.5 12.5h17M9 12.5V19M15 12.5V19" />
+      </svg>
+    );
+  }
 
-function NavIcon({ name }: { name: NavItem['icon'] }) {
+  if (name === 'purchases') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 4h14v16H5z" />
+        <path d="M8.5 9h7M8.5 13h7M8.5 17h4" />
+      </svg>
+    );
+  }
+
+  if (name === 'suppliers') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M3 9h18M4.5 9v10h15V9" />
+        <path d="M7.5 9V6h9v3" />
+        <path d="M9.5 13h5" />
+      </svg>
+    );
+  }
+
+  if (name === 'invoices') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 3h9l4 4v14H6z" />
+        <path d="M9 11h7M9 15h7M9 7h4" />
+      </svg>
+    );
+  }
+
+  if (name === 'customers') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="8" r="3.5" />
+        <path d="M5 20c.7-3.6 3.2-5.5 7-5.5s6.3 1.9 7 5.5" />
+      </svg>
+    );
+  }
+
+  if (name === 'credit') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="6" width="18" height="12" rx="2" />
+        <path d="M3 10h18M7 14h4" />
+      </svg>
+    );
+  }
+
+  if (name === 'reports') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4 4v16h16" />
+        <path d="M7.5 15.5v-3M12 15.5v-6M16.5 15.5v-4" />
+      </svg>
+    );
+  }
+
+  if (name === 'audit') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 3h9l4 4v14H6z" />
+        <path d="M15 3v4h4" />
+        <path d="M9 12h7M9 16h5" />
+      </svg>
+    );
+  }
+
   if (name === 'depots') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
         <path d="M4 10.5 12 4l8 6.5V20H4z" />
         <path d="M9 20v-6h6v6" />
+      </svg>
+    );
+  }
+
+  if (name === 'staff') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="9" cy="8" r="3" />
+        <path d="M3.5 19c.6-3.1 2.8-5 5.5-5s4.9 1.9 5.5 5" />
+        <path d="M16 5.5a3 3 0 0 1 0 5.8" />
+        <path d="M17.5 14.2c1.7.7 2.8 2.4 3 4.8" />
+      </svg>
+    );
+  }
+
+  if (name === 'settings') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4" />
+      </svg>
+    );
+  }
+
+  if (name === 'key') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="8" cy="12" r="4" />
+        <path d="M12 12h9M17 12v3M20 12v2" />
       </svg>
     );
   }
@@ -100,15 +202,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    if (user.role === 'PLATFORM_ADMIN' && !pathname.startsWith('/platform')) {
-      router.replace('/platform/depots');
+    if (user.mustChangePassword) {
+      if (pathname !== '/change-password') {
+        router.replace('/change-password');
+      }
       return;
     }
 
-    if (user.role !== 'PLATFORM_ADMIN' && pathname.startsWith('/platform')) {
-      router.replace('/forbidden');
+    if (!canAccessPath(user.role, pathname)) {
+      router.replace(user.role === 'PLATFORM_ADMIN' ? defaultPathForRole(user.role) : '/forbidden');
     }
   }, [status, user, pathname, router]);
+
+  const logout = async () => {
+    setLoggingOut(true);
+    await logoutSession();
+    router.replace('/login');
+  };
 
   if (status === 'loading') {
     return <FullPageLoading />;
@@ -118,8 +228,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return <FullPageLoading />;
   }
 
-  const home = user.role === 'PLATFORM_ADMIN' ? '/platform/depots' : '/dashboard';
-  const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(user.role));
+  if (user.mustChangePassword) {
+    if (pathname !== '/change-password') {
+      return <FullPageLoading />;
+    }
+
+    return (
+      <div className="forced-shell">
+        <header className="forced-shell__header">
+          <Brand />
+          <div className="forced-shell__actions">
+            <LanguageSwitch compact />
+            <button
+              type="button"
+              className="button button--secondary button--small"
+              onClick={logout}
+              disabled={loggingOut}
+            >
+              {t('common.logout')}
+            </button>
+          </div>
+        </header>
+        <main className="forced-shell__main">
+          <div className="forced-shell__content">{children}</div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!canAccessPath(user.role, pathname)) {
+    return <FullPageLoading />;
+  }
+
+  const home = defaultPathForRole(user.role);
+  const visibleItems = visibleNavItems(user.role);
   const current = visibleItems.find(
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
   );
@@ -129,12 +271,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       : pathname.startsWith('/forbidden')
         ? t('forbidden.title')
         : t('app.name');
-
-  const logout = async () => {
-    setLoggingOut(true);
-    await logoutSession();
-    router.replace('/login');
-  };
 
   return (
     <div className="app-shell">

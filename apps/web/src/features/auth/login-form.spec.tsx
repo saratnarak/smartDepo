@@ -32,6 +32,7 @@ const SESSION: AuthSession = {
     phone: '012345678',
     role: 'OWNER',
     depotId: 'depot-1',
+    mustChangePassword: false,
   },
   depot: { id: 'depot-1', name: 'Depot A', status: 'APPROVED' },
 };
@@ -80,6 +81,21 @@ describe('LoginForm', () => {
       expect(loginMock).toHaveBeenCalledWith('owner@example.com', 'Password1');
       expect(mockReplace).toHaveBeenCalledWith('/dashboard');
     });
+  });
+
+  it('sends a user with a reset password to the password form first', async () => {
+    const user = userEvent.setup();
+    loginMock.mockResolvedValue({
+      ...SESSION,
+      user: { ...SESSION.user, mustChangePassword: true },
+    });
+    renderLogin();
+
+    await user.type(screen.getByLabelText('Email or phone'), 'owner@example.com');
+    await user.type(screen.getByLabelText('Password'), 'Password1');
+    await user.click(screen.getByRole('button', { name: 'Sign in' }));
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/change-password'));
   });
 
   it('sends a pending depot to the waiting screen', async () => {

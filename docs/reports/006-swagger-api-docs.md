@@ -76,5 +76,5 @@ Manual checks against the running API:
 ready for review
 
 ## Human review (filled in by the human only)
-Decision: pending
-Notes:
+Decision: approved
+

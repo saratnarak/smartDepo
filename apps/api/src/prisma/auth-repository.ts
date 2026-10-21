@@ -13,6 +13,7 @@ export interface AuthUserRecord {
   phone: string | null;
   passwordHash: string;
   isActive: boolean;
+  mustChangePassword: boolean;
   failedLoginAttempts: number;
   lockedUntil: Date | null;
   depotStatus: DepotStatus | null;
@@ -28,6 +29,7 @@ const AUTH_USER_COLUMNS = `
   phone,
   password_hash AS "passwordHash",
   is_active AS "isActive",
+  must_change_password AS "mustChangePassword",
   failed_login_attempts AS "failedLoginAttempts",
   locked_until AS "lockedUntil",
   depot_status AS "depotStatus",

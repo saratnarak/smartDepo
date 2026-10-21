@@ -20,6 +20,13 @@ export class SafeUserDto {
 
   @ApiProperty({ format: 'uuid', nullable: true })
   depotId!: string | null;
+
+  @ApiProperty({
+    description:
+      'True when an owner reset this password; the client should ask the user to change it.',
+    example: false,
+  })
+  mustChangePassword!: boolean;
 }
 
 export class SafeDepotDto {
@@ -69,6 +76,11 @@ export class MeResponseDto {
 
   @ApiProperty({ type: () => SafeDepotDto, nullable: true })
   depot!: SafeDepotDto | null;
+}
+
+export class ChangePasswordResponseDto {
+  @ApiProperty({ example: false })
+  mustChangePassword!: boolean;
 }
 
 export class RegisteredOwnerDto {

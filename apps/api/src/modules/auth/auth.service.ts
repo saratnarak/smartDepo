@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   InternalServerErrorException,
@@ -8,6 +9,8 @@ import {
 } from '@nestjs/common';
 
 import { AUDIT_ACTIONS } from '../../common/audit/audit-actions.js';
+import { FREE_TRIAL_PLAN_CODE } from '../../common/plans/plan-limits.js';
+import { isUniqueConstraintError } from '../../common/prisma/prisma-errors.js';
 import type { AuthenticatedPrincipal, UserRole } from '../../common/tenant/tenant-context.js';
 import {
   isUserRole,
@@ -17,6 +20,7 @@ import {
 import type { DepotStatus } from '../../generated/prisma/enums.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { AuthUserRecord } from '../../prisma/auth-repository.js';
+import type { ChangePasswordDto } from './dto/change-password.dto.js';
 import type { LoginDto } from './dto/login.dto.js';
 import type { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import type { RegisterDepotDto } from './dto/register-depot.dto.js';
@@ -33,18 +37,13 @@ export interface SafeUser {
   phone: string | null;
   role: string;
   depotId: string | null;
+  mustChangePassword: boolean;
 }
 
 export interface SafeDepot {
   id: string;
   name: string;
   status: string;
-}
-
-function isUniqueConstraintError(error: unknown): boolean {
-  return (
-    typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 'P2002'
-  );
 }
 
 function slugify(value: string): string {
@@ -120,6 +119,18 @@ export class AuthService {
           },
         });
 
+        // Every new depot starts with the Free Trial plan (FR-4).
+        const freeTrial = await transaction.plan.findFirst({
+          where: { code: FREE_TRIAL_PLAN_CODE, isActive: true },
+          select: { id: true },
+        });
+
+        if (freeTrial !== null) {
+          await transaction.subscription.create({
+            data: { depotId, planId: freeTrial.id, status: 'ACTIVE' },
+          });
+        }
+
         await transaction.auditLog.create({
           data: {
             depotId,
@@ -127,7 +138,11 @@ export class AuthService {
             action: AUDIT_ACTIONS.DEPOT_REGISTERED,
             entityType: 'Depot',
             entityId: depotId,
-            after: { status: depot.status, ownerEmail: owner.email },
+            after: {
+              status: depot.status,
+              ownerEmail: owner.email,
+              planCode: freeTrial === null ? null : FREE_TRIAL_PLAN_CODE,
+            },
           },
         });
 
@@ -209,6 +224,7 @@ export class AuthService {
         phone: user.phone,
         role,
         depotId: user.depotId,
+        mustChangePassword: user.mustChangePassword,
       },
       depot:
         user.depotId === null
@@ -267,6 +283,7 @@ export class AuthService {
             phone: user.phone,
             role: PLATFORM_ADMIN_ROLE,
             depotId: null,
+            mustChangePassword: user.mustChangePassword,
           },
           depot: null,
         };
@@ -291,10 +308,103 @@ export class AuthService {
           phone: user.phone,
           role: context.role,
           depotId: context.depotId,
+          mustChangePassword: user.mustChangePassword,
         },
         depot: { id: depot.id, name: depot.name, status: depot.status },
       };
     });
+  }
+
+  /**
+   * Changes the caller's own password. The current password is required even though the caller
+   * already holds a token, so a stolen access token cannot be turned into a permanent takeover.
+   * A successful change also clears must_change_password and any login lockout.
+   */
+  async changePassword(
+    principal: AuthenticatedPrincipal,
+    dto: ChangePasswordDto,
+  ): Promise<{ mustChangePassword: boolean }> {
+    const user = await this.prisma.authGetUser(principal.userId);
+
+    if (user === null || !user.isActive || !this.isPasswordOwner(principal, user)) {
+      throw invalidCredentials();
+    }
+
+    const passwordHash = await this.verifyAndHashPassword(user.passwordHash, dto);
+
+    if (principal.role === PLATFORM_ADMIN_ROLE) {
+      await this.prisma.runAsPlatformAdmin(principal, async (transaction) => {
+        await transaction.user.update({
+          where: { id: user.id },
+          data: {
+            passwordHash,
+            mustChangePassword: false,
+            failedLoginAttempts: 0,
+            lockedUntil: null,
+          },
+        });
+        await transaction.auditLog.create({
+          data: {
+            depotId: null,
+            actorUserId: user.id,
+            action: AUDIT_ACTIONS.PASSWORD_CHANGED,
+            entityType: 'User',
+            entityId: user.id,
+          },
+        });
+      });
+
+      return { mustChangePassword: false };
+    }
+
+    const context = TenantContext.fromPrincipal(principal);
+
+    await this.prisma.runAsTenant(context, async (transaction) => {
+      await transaction.user.update({
+        where: { id: user.id },
+        data: {
+          passwordHash,
+          mustChangePassword: false,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+        },
+      });
+      await transaction.auditLog.create({
+        data: {
+          actorUserId: user.id,
+          action: AUDIT_ACTIONS.PASSWORD_CHANGED,
+          entityType: 'User',
+          entityId: user.id,
+        },
+      });
+    });
+
+    return { mustChangePassword: false };
+  }
+
+  private isPasswordOwner(principal: AuthenticatedPrincipal, user: AuthUserRecord): boolean {
+    if (principal.role === PLATFORM_ADMIN_ROLE) {
+      return user.depotId === null && user.roleCode === PLATFORM_ADMIN_ROLE;
+    }
+
+    return user.depotId === principal.depotId && user.roleCode === principal.role;
+  }
+
+  private async verifyAndHashPassword(
+    currentHash: string,
+    dto: ChangePasswordDto,
+  ): Promise<string> {
+    const matches = await this.passwords.verify(dto.currentPassword, currentHash);
+
+    if (!matches) {
+      throw new BadRequestException('Current password is incorrect');
+    }
+
+    if (await this.passwords.verify(dto.newPassword, currentHash)) {
+      throw new BadRequestException('New password must be different from the current password');
+    }
+
+    return this.passwords.hash(dto.newPassword);
   }
 
   private loginBlockReason(user: AuthUserRecord): LoginBlockReason | null {
