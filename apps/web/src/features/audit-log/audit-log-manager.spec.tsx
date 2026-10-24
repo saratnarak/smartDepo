@@ -124,6 +124,51 @@ describe('the audit log', () => {
     });
   });
 
+  it('sends the whole day of the period in the time of the depot', async () => {
+    const user = userEvent.setup();
+    renderAuditLog('depot');
+
+    await screen.findByRole('button', { name: 'View' });
+
+    await user.type(screen.getByLabelText('From'), '2026-10-01');
+    await user.type(screen.getByLabelText('To'), '2026-10-31');
+    await user.click(screen.getByRole('button', { name: 'Apply the filters' }));
+
+    await waitFor(() => {
+      expect(listAuditLogMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          from: '2026-10-01T00:00:00+07:00',
+          to: '2026-10-31T23:59:59.999+07:00',
+        }),
+      );
+    });
+  });
+
+  it('shows the time of the entry in the time of the depot', async () => {
+    renderAuditLog('depot');
+
+    const details = await screen.findByRole('button', { name: 'View' });
+    const row = details.closest('tr');
+
+    expect(within(row as HTMLElement).getByText(/15:30/)).toBeInTheDocument();
+  });
+
+  it('has a refresh button and no "try again" button when the log loads', async () => {
+    renderAuditLog('depot');
+
+    await screen.findByRole('button', { name: 'View' });
+
+    expect(screen.getByRole('button', { name: 'Refresh' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
+  });
+
+  it('shows the "try again" button when the log cannot be loaded', async () => {
+    listAuditLogMock.mockRejectedValue(new Error('boom'));
+    renderAuditLog('depot');
+
+    expect(await screen.findByRole('button', { name: 'Try again' })).toBeInTheDocument();
+  });
+
   it('refuses a period where the first day is after the last day', async () => {
     const user = userEvent.setup();
     renderAuditLog('depot');

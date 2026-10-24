@@ -118,6 +118,7 @@ export function PlanCard() {
           <UsageRow
             label={t('plan.users')}
             used={plan.usage.users}
+            limit={plan.limits.users}
             bar={bars.users}
             limitText={
               bars.users.unlimited
@@ -129,6 +130,7 @@ export function PlanCard() {
           <UsageRow
             label={t('plan.products')}
             used={plan.usage.products}
+            limit={plan.limits.products}
             bar={bars.products}
             limitText={
               bars.products.unlimited
@@ -145,12 +147,20 @@ export function PlanCard() {
 function UsageRow({
   label,
   used,
+  limit,
   bar,
   limitText,
 }: {
   label: string;
   used: number;
-  bar: { percent: number; reached: boolean; over: boolean; unlimited: boolean };
+  limit: number | null;
+  bar: {
+    percent: number;
+    remaining: number | null;
+    reached: boolean;
+    over: boolean;
+    unlimited: boolean;
+  };
   limitText: string;
 }) {
   const { t } = useI18n();
@@ -171,11 +181,16 @@ function UsageRow({
         aria-label={label}
         aria-valuenow={bar.unlimited ? undefined : used}
         aria-valuemin={bar.unlimited ? undefined : 0}
-        aria-valuemax={bar.unlimited ? undefined : undefined}
+        aria-valuemax={bar.unlimited ? undefined : (limit ?? undefined)}
         aria-valuetext={bar.unlimited ? t('plan.noLimit') : `${String(used)} ${limitText}`}
       >
         <span className="usage-bar__fill" style={{ width: `${String(bar.percent)}%` }} />
       </div>
+      {bar.remaining !== null && !bar.reached ? (
+        <p className="usage-row__remaining muted">
+          {t('plan.remaining', { count: bar.remaining })}
+        </p>
+      ) : null}
     </div>
   );
 }

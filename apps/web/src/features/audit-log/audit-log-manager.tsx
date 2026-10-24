@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { EmptyMark } from '@/components/empty-mark';
 import { useI18n } from '@/components/i18n-provider';
 import { Modal } from '@/components/modal';
 import { listAuditLog, listPlatformAuditLog, listStaff } from '@/lib/api-client';
 import { getErrorMessage } from '@/lib/errors';
-import { formatDate } from '@/lib/format';
+import { formatDateTime } from '@/lib/format';
 import type { AuditLogEntry, Paginated, StaffUser } from '@/lib/types';
 import { useSessionStore } from '@/stores/session-store';
 import {
@@ -166,11 +167,13 @@ export function AuditLogManager({ scope }: AuditLogManagerProps) {
         </div>
         <button
           type="button"
-          className="button button--secondary"
+          className="icon-button refresh-button"
+          aria-label={t('common.refresh')}
+          title={t('common.refresh')}
           onClick={() => setReloadKey((value) => value + 1)}
           disabled={loading}
         >
-          {t('common.retry')}
+          <span aria-hidden="true">↻</span>
         </button>
       </section>
 
@@ -275,9 +278,18 @@ export function AuditLogManager({ scope }: AuditLogManagerProps) {
       </section>
 
       {error !== null ? (
-        <p className="alert alert--error" role="alert">
-          {error}
-        </p>
+        <div className="panel__body">
+          <p className="alert alert--error" role="alert">
+            {error}
+          </p>
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={() => setReloadKey((value) => value + 1)}
+          >
+            {t('common.retry')}
+          </button>
+        </div>
       ) : null}
 
       <section className="panel panel--flush" aria-labelledby="audit-log-table-title">
@@ -304,9 +316,7 @@ export function AuditLogManager({ scope }: AuditLogManagerProps) {
 
         {!loading && rows.length === 0 ? (
           <div className="empty-state empty-state--large">
-            <span className="empty-state__mark" aria-hidden="true">
-              0
-            </span>
+            <EmptyMark />
             <div>
               <strong>{t('auditLog.emptyTitle')}</strong>
               <p>{t('auditLog.emptyBody')}</p>
@@ -365,7 +375,7 @@ export function AuditLogManager({ scope }: AuditLogManagerProps) {
               <tbody>
                 {rows.map((entry) => (
                   <tr key={entry.id}>
-                    <td>{formatDate(entry.createdAt, locale)}</td>
+                    <td>{formatDateTime(entry.createdAt, locale)}</td>
                     <td>
                       {entry.actor === null ? (
                         <span className="muted">{t('auditLog.system')}</span>
@@ -437,7 +447,7 @@ export function AuditLogManager({ scope }: AuditLogManagerProps) {
             <dl className="detail-list">
               <div className="detail-list__row">
                 <dt>{t('auditLog.columnTime')}</dt>
-                <dd>{formatDate(detail.createdAt, locale)}</dd>
+                <dd>{formatDateTime(detail.createdAt, locale)}</dd>
               </div>
               <div className="detail-list__row">
                 <dt>{t('auditLog.columnUser')}</dt>

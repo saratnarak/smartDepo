@@ -500,8 +500,9 @@
     "planDialogTitle": "Change the plan of the depot",
     "planDialogMessage": "The depot {name} moves to the plan you pick. The change is written to the audit log of the depot.",
     "planLabel": "The new plan",
-    "confirmPlanChange": "Change the plan",
-    "planChanged": "The plan of the depot was changed."
+    "confirmPlanChange": "Confirm the plan change",
+    "planChanged": "The plan of the depot was changed.",
+    "planLimits": "The limits of this plan: {users} staff accounts and {products} products."
   },
   "errors": {
     "network": "We cannot reach the server. Check your connection and try again.",
@@ -1086,7 +1087,9 @@
     "users": "Staff accounts",
     "products": "Products",
     "noLimit": "no limit",
-    "ofLimit": "of {limit}"
+    "unlimited": "unlimited",
+    "ofLimit": "of {limit}",
+    "remaining": "{count} left"
   },
   "auditLog": {
     "eyebrow": "Audit log",

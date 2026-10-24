@@ -4,16 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { useI18n } from '@/components/i18n-provider';
-import { Modal } from '@/components/modal';
 import { StatusBadge } from '@/components/status-badge';
-import {
-  approveDepot,
-  changeDepotPlan,
-  listDepots,
-  listPlans,
-  rejectDepot,
-  suspendDepot,
-} from '@/lib/api-client';
+import { PlanChangeDialog } from '@/features/platform-depots/plan-change-dialog';
+import { approveDepot, listDepots, listPlans, rejectDepot, suspendDepot } from '@/lib/api-client';
 import { getErrorMessage } from '@/lib/errors';
 import { formatDate } from '@/lib/format';
 import {
@@ -46,9 +39,6 @@ export default function PlatformDepotsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [planDepot, setPlanDepot] = useState<DepotAdminView | null>(null);
-  const [planCode, setPlanCode] = useState('');
-  const [planBusy, setPlanBusy] = useState(false);
-  const [planError, setPlanError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const requestId = useRef(0);
 
@@ -145,36 +135,11 @@ export default function PlatformDepotsPage() {
   };
 
   const openPlanDialog = (depot: DepotAdminView) => {
-    setPlanError(null);
     setPlanDepot(depot);
-    setPlanCode(depot.plan?.code ?? plans[0]?.code ?? '');
   };
 
   const closePlanDialog = () => {
-    if (!planBusy) {
-      setPlanDepot(null);
-      setPlanError(null);
-    }
-  };
-
-  const savePlan = async () => {
-    if (planDepot === null || planCode === '') {
-      return;
-    }
-
-    setPlanBusy(true);
-    setPlanError(null);
-
-    try {
-      await changeDepotPlan(planDepot.id, planCode);
-      setPlanDepot(null);
-      setNotice(t('platform.planChanged'));
-      setReloadKey((value) => value + 1);
-    } catch (error) {
-      setPlanError(getErrorMessage(t, error));
-    } finally {
-      setPlanBusy(false);
-    }
+    setPlanDepot(null);
   };
 
   const total = result?.meta.total ?? 0;
@@ -436,59 +401,17 @@ export default function PlatformDepotsPage() {
         ) : null}
       </section>
 
-      <Modal
-        open={planDepot !== null}
-        title={t('platform.planDialogTitle')}
-        busy={planBusy}
+      <PlanChangeDialog
+        key={planDepot?.id ?? 'closed'}
+        depot={planDepot}
+        plans={plans}
+        onChanged={() => {
+          setPlanDepot(null);
+          setNotice(t('platform.planChanged'));
+          setReloadKey((value) => value + 1);
+        }}
         onClose={closePlanDialog}
-      >
-        <div className="panel__body">
-          <p className="muted">
-            {planDepot === null ? '' : t('platform.planDialogMessage', { name: planDepot.name })}
-          </p>
-
-          <div className="field">
-            <label htmlFor="plan-code">{t('platform.planLabel')}</label>
-            <select
-              id="plan-code"
-              value={planCode}
-              onChange={(event) => setPlanCode(event.target.value)}
-              disabled={planBusy}
-            >
-              {plans.map((plan) => (
-                <option key={plan.code} value={plan.code}>
-                  {plan.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {planError !== null ? (
-            <p className="alert alert--error" role="alert">
-              {planError}
-            </p>
-          ) : null}
-
-          <div className="row-actions">
-            <button
-              type="button"
-              className="button button--primary"
-              onClick={() => void savePlan()}
-              disabled={planBusy || planCode === ''}
-            >
-              {t('platform.confirmPlanChange')}
-            </button>
-            <button
-              type="button"
-              className="button button--quiet"
-              onClick={closePlanDialog}
-              disabled={planBusy}
-            >
-              {t('common.cancel')}
-            </button>
-          </div>
-        </div>
-      </Modal>
+      />
 
       <ConfirmDialog
         open={action !== null}

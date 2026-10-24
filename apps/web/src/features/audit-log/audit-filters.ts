@@ -1,4 +1,5 @@
 import type { ListAuditLogParams } from '@/lib/api-client';
+import { DEPOT_UTC_OFFSET_MINUTES } from '@/lib/depot-dates';
 
 /**
  * The filters of the audit log (FR-51). The lists of the actions and of the types of record are
@@ -79,6 +80,30 @@ export const EMPTY_AUDIT_FILTERS: AuditFilters = {
   to: '',
 };
 
+/** The time of the depot as a time zone of an ISO date-time, for example +07:00. */
+function depotOffsetSuffix(): string {
+  const sign = DEPOT_UTC_OFFSET_MINUTES < 0 ? '-' : '+';
+  const absolute = Math.abs(DEPOT_UTC_OFFSET_MINUTES);
+
+  return `${sign}${String(Math.floor(absolute / 60)).padStart(2, '0')}:${String(absolute % 60).padStart(2, '0')}`;
+}
+
+/**
+ * The first moment of a day of the depot, as an ISO date-time. The API compares the entries with
+ * `createdAt >= from`, so a day without its time would cut the morning of the chosen day.
+ */
+export function depotDayStart(day: string): string {
+  return `${day}T00:00:00${depotOffsetSuffix()}`;
+}
+
+/**
+ * The last moment of a day of the depot, as an ISO date-time. The API compares the entries with
+ * `createdAt <= to`, so the day has to end at 23:59:59.999 to keep the whole day.
+ */
+export function depotDayEnd(day: string): string {
+  return `${day}T23:59:59.999${depotOffsetSuffix()}`;
+}
+
 /** The filters without the empty values, so the API only gets what the user picked. */
 export function filtersToParams(filters: AuditFilters): ListAuditLogParams {
   const params: ListAuditLogParams = {};
@@ -96,11 +121,11 @@ export function filtersToParams(filters: AuditFilters): ListAuditLogParams {
   }
 
   if (filters.from !== '') {
-    params.from = filters.from;
+    params.from = depotDayStart(filters.from);
   }
 
   if (filters.to !== '') {
-    params.to = filters.to;
+    params.to = depotDayEnd(filters.to);
   }
 
   return params;

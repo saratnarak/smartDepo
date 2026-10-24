@@ -1,4 +1,5 @@
 import type { Locale } from '@/i18n/config';
+import { DEPOT_UTC_OFFSET_MINUTES } from '@/lib/depot-dates';
 
 const LOCALE_TAGS: Record<Locale, string> = {
   en: 'en-GB',
@@ -89,6 +90,30 @@ export function formatDate(value: string | Date, locale: Locale): string {
     month: 'short',
     day: '2-digit',
   }).format(date);
+}
+
+/**
+ * The day and the time of the depot. The API groups the days in the time of Phnom Penh (UTC+7 all
+ * year), so the time of an entry is shown in the time of the depot and not in the time of the
+ * browser: an entry of 00:30 in Phnom Penh belongs to that day and not to the day before.
+ */
+export function formatDateTime(value: string | Date, locale: Locale): string {
+  const date = value instanceof Date ? value : new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  const shifted = new Date(date.getTime() + DEPOT_UTC_OFFSET_MINUTES * 60 * 1000);
+
+  return new Intl.DateTimeFormat(LOCALE_TAGS[locale], {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  }).format(shifted);
 }
 
 export function initials(name: string): string {

@@ -2275,6 +2275,11 @@ a.kpi-card:hover {
   font-weight: 500;
 }
 
+.usage-row__remaining {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
 .usage-bar {
   position: relative;
   height: 10px;
@@ -2334,6 +2339,14 @@ a.kpi-card:hover {
 .empty-state__mark--icon {
   background: var(--surface-soft);
   color: var(--muted);
+}
+
+.empty-state__mark--icon svg {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
 }
 
 @media (max-width: 720px) {

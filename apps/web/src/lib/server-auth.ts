@@ -8,7 +8,7 @@ export function serverApiUrl(): string {
   const target = (
     process.env.API_INTERNAL_URL ??
     process.env.API_PROXY_TARGET ??
-    'http://localhost:3001'
+    'http://127.0.0.1:3001'
   ).replace(/\/+$/, '');
 
   return `${target}/api/v1`;

@@ -90,6 +90,14 @@ describe('the plan card', () => {
     const userBar = screen.getByRole('progressbar', { name: 'Staff accounts' });
 
     expect(userBar).toHaveAttribute('aria-valuenow', '3');
+    expect(userBar).toHaveAttribute('aria-valuemax', '5');
+  });
+
+  it('shows how many places are left before the limit is reached', async () => {
+    renderCard();
+
+    expect(await screen.findByText('2 left')).toBeInTheDocument();
+    expect(screen.getByText('6 left')).toBeInTheDocument();
   });
 
   it('shows a clear message when the limit of the users is reached', async () => {

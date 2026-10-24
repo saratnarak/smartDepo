@@ -2,6 +2,8 @@ import {
   AUDIT_ACTIONS,
   AUDIT_ENTITY_TYPES,
   EMPTY_AUDIT_FILTERS,
+  depotDayEnd,
+  depotDayStart,
   filtersToParams,
   hasActiveFilters,
   hasInvalidPeriod,
@@ -32,8 +34,22 @@ describe('the filters of the audit log', () => {
     expect(params).toEqual({
       action: 'STAFF_CREATED',
       entityType: 'User',
-      from: '2026-10-01',
+      from: '2026-10-01T00:00:00+07:00',
     });
+  });
+
+  it('sends the whole day of the period, in the time of the depot', () => {
+    expect(depotDayStart('2026-10-01')).toBe('2026-10-01T00:00:00+07:00');
+    expect(depotDayEnd('2026-10-01')).toBe('2026-10-01T23:59:59.999+07:00');
+
+    const params = filtersToParams({
+      ...EMPTY_AUDIT_FILTERS,
+      from: '2026-10-01',
+      to: '2026-10-31',
+    });
+
+    expect(params.from).toBe('2026-10-01T00:00:00+07:00');
+    expect(params.to).toBe('2026-10-31T23:59:59.999+07:00');
   });
 
   it('knows when a filter is set', () => {

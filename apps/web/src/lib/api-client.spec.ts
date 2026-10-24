@@ -1,4 +1,10 @@
-import { apiRequest, registerDepot } from '@/lib/api-client';
+import {
+  apiRequest,
+  changeDepotPlan,
+  listAuditLog,
+  listPlatformAuditLog,
+  registerDepot,
+} from '@/lib/api-client';
 import { ApiError } from '@/lib/api-error';
 import { refreshAccessToken } from '@/lib/session-client';
 import type { SessionUser } from '@/lib/types';
@@ -148,5 +154,38 @@ describe('apiRequest', () => {
       expect(error).toBeInstanceOf(ApiError);
       expect((error as ApiError).detailReason).toBe('DEPOT_SUSPENDED');
     }
+  });
+
+  it('changes the plan of a depot on the real route of the platform', async () => {
+    useSessionStore.getState().setSession(USER, null, 'memory-token');
+    fetchMock.mockResolvedValue(jsonResponse({ plan: null, usage: {}, limits: {} }));
+
+    await changeDepotPlan('depot-1', 'PRO');
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+    expect(url).toBe('/api/v1/platform/depots/depot-1/plan');
+    expect(init.method).toBe('PATCH');
+    expect(JSON.parse(String(init.body))).toEqual({ planCode: 'PRO' });
+  });
+
+  it('reads the two audit logs on their own routes', async () => {
+    useSessionStore.getState().setSession(USER, null, 'memory-token');
+    fetchMock.mockImplementation(() =>
+      jsonResponse({ data: [], meta: { page: 1, pageSize: 20, total: 0 } }),
+    );
+
+    await listAuditLog({ action: 'STAFF_CREATED', from: '2026-10-01' });
+    await listPlatformAuditLog({ page: 2 });
+
+    const [firstUrl, firstInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [secondUrl] = fetchMock.mock.calls[1] as [string, RequestInit];
+
+    expect(firstUrl).toContain('/api/v1/audit-log?');
+    expect(firstUrl).toContain('action=STAFF_CREATED');
+    expect(firstUrl).toContain('from=2026-10-01');
+    expect(firstInit.method).toBe('GET');
+    expect(secondUrl).toContain('/api/v1/platform/audit-log?');
+    expect(secondUrl).toContain('page=2');
   });
 });

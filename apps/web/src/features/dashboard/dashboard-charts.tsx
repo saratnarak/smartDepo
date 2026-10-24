@@ -14,6 +14,7 @@ import {
   YAxis,
 } from 'recharts';
 
+import { EmptyMark } from '@/components/empty-mark';
 import { useI18n } from '@/components/i18n-provider';
 import { formatMoney } from '@/lib/format';
 import { CHART_COLORS, type ChartDatum, type PurchasesVersusSalesDatum } from './chart-data';
@@ -95,11 +96,7 @@ export function ChartPanel({
 export function EmptyChart({ label }: { label: string }) {
   return (
     <div className="empty-state chart-panel__empty">
-      <span className="empty-state__mark empty-state__mark--icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="20" height="20">
-          <path d="M4 19V9M10 19V5M16 19v-7M22 19H2" />
-        </svg>
-      </span>
+      <EmptyMark variant="chart" />
       <div>
         <p>{label}</p>
       </div>
